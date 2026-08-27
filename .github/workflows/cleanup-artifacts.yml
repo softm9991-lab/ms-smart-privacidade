@@ -1,0 +1,51 @@
+# Remove Actions artifacts older than 1 day (expired artifacts count toward org 500 MB quota until deleted).
+name: Cleanup Artifacts
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const retentionDays = 1;
+            const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+            const { owner, repo } = context.repo;
+            let page = 1;
+            let deleted = 0;
+
+            while (true) {
+              const { data } = await github.rest.actions.listArtifactsForRepo({
+                owner,
+                repo,
+                per_page: 100,
+                page,
+              });
+              if (data.artifacts.length === 0) break;
+
+              for (const artifact of data.artifacts) {
+                const created = new Date(artifact.created_at);
+                if (artifact.expired || created < cutoff) {
+                  await github.rest.actions.deleteArtifact({
+                    owner,
+                    repo,
+                    artifact_id: artifact.id,
+                  });
+                  deleted++;
+                  console.log(`deleted ${artifact.id} ${artifact.name}`);
+                }
+              }
+
+              if (data.artifacts.length < 100) break;
+              page++;
+            }
+
+            console.log(`Deleted ${deleted} artifact(s) in ${owner}/${repo}`);
