@@ -1,9 +1,9 @@
-# Remove Actions artifacts older than 1 day (expired artifacts count toward org 500 MB quota until deleted).
+# Safety net: purge all Actions artifacts (deploy workflows delete immediately after publish).
 name: Cleanup Artifacts
 
 on:
   schedule:
-    - cron: "0 6 * * *"
+    - cron: "0 */6 * * *"
   workflow_dispatch:
 
 permissions:
@@ -16,8 +16,6 @@ jobs:
       - uses: actions/github-script@v7
         with:
           script: |
-            const retentionDays = 1;
-            const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
             const { owner, repo } = context.repo;
             let page = 1;
             let deleted = 0;
@@ -32,16 +30,13 @@ jobs:
               if (data.artifacts.length === 0) break;
 
               for (const artifact of data.artifacts) {
-                const created = new Date(artifact.created_at);
-                if (artifact.expired || created < cutoff) {
-                  await github.rest.actions.deleteArtifact({
-                    owner,
-                    repo,
-                    artifact_id: artifact.id,
-                  });
-                  deleted++;
-                  console.log(`deleted ${artifact.id} ${artifact.name}`);
-                }
+                await github.rest.actions.deleteArtifact({
+                  owner,
+                  repo,
+                  artifact_id: artifact.id,
+                });
+                deleted++;
+                console.log(`deleted ${artifact.id} ${artifact.name}`);
               }
 
               if (data.artifacts.length < 100) break;
